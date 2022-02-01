@@ -37,4 +37,18 @@ contract Airdrop is MerkleRewards, Authorizable {
         uint256 unclaimed = token.balanceOf(address(this));
         token.transfer(destination, unclaimed);
     }
+
+    /// @notice Claims an amount of tokens which are in the tree and send them to the user
+    /// @param amount The amount of tokens to claim
+    /// @param totalGrant The total amount of tokens the user was granted
+    /// @param merkleProof The merkle de-commitment which proves the user is in the merkle root
+    /// @param destination The address which will be credited with funds
+    function claim(
+        uint256 amount,
+        uint256 totalGrant,
+        bytes32[] calldata merkleProof,
+        address destination
+    ) external virtual override {
+        revert("Not Allowed to claim");
+    }
 }
