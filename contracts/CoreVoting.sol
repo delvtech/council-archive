@@ -59,7 +59,7 @@ contract CoreVoting is Authorizable, ReentrancyBlock, ICoreVoting {
 
     // mapping of addresses and proposalIDs to vote struct representing
     // the voting actions taken for each proposal
-    mapping(address => mapping(uint256 => Vote)) internal _votes;
+    mapping(address => mapping(uint256 => Vote)) public votes;
 
     enum Ballot { YES, NO, MAYBE }
 
@@ -237,17 +237,17 @@ contract CoreVoting is Authorizable, ReentrancyBlock, ICoreVoting {
 
         // if a user has already voted, undo their previous vote.
         // NOTE: A new vote can have less voting power
-        if (_votes[msg.sender][proposalId].votingPower > 0) {
+        if (votes[msg.sender][proposalId].votingPower > 0) {
             proposals[proposalId].votingPower[
-                uint256(_votes[msg.sender][proposalId].castBallot)
-            ] -= _votes[msg.sender][proposalId].votingPower;
+                uint256(votes[msg.sender][proposalId].castBallot)
+            ] -= votes[msg.sender][proposalId].votingPower;
         }
-        _votes[msg.sender][proposalId] = Vote(votingPower, ballot);
+        votes[msg.sender][proposalId] = Vote(votingPower, ballot);
 
         proposals[proposalId].votingPower[uint256(ballot)] += votingPower;
 
         // Emit an event to track this info
-        emit Voted(msg.sender, proposalId, _votes[msg.sender][proposalId]);
+        emit Voted(msg.sender, proposalId, votes[msg.sender][proposalId]);
 
         return votingPower;
     }
@@ -301,6 +301,16 @@ contract CoreVoting is Authorizable, ReentrancyBlock, ICoreVoting {
         // Proposals are only deleted when they are actually executed, failed proposals
         // are never deleted
         delete proposals[proposalId];
+    }
+
+    /// @notice gets the current voting power for a proposal
+    /// @param proposalId The proposal's ID.
+    function getProposalVotingPower(uint256 proposalId)
+        external
+        view
+        returns (uint128[3] memory)
+    {
+        return proposals[proposalId].votingPower;
     }
 
     /// @notice Sets a quorum for a specific address and selector.

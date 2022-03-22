@@ -7,7 +7,7 @@ import "../libraries/VestingVaultStorage.sol";
 import "../libraries/Storage.sol";
 import "../interfaces/IVotingVault.sol";
 
-contract VestingVault is IVotingVault {
+abstract contract AbstractVestingVault is IVotingVault {
     // Bring our libraries into scope
     using History for *;
     using VestingVaultStorage for *;
@@ -60,6 +60,16 @@ contract VestingVault is IVotingVault {
         // This call returns a storage mapping with a unique non overwrite-able storage location
         // which can be persisted through upgrades, even if they change storage layout
         return (VestingVaultStorage.mappingAddressToGrantPtr("grants"));
+    }
+
+    /// @notice A single function endpoint for loading the starting
+    /// point of the range for each accepted grant
+    /// @dev This is modified any time a grant is accepted
+    /// @return returns the starting point uint
+    function _loadBound() internal pure returns (Storage.Uint256 memory) {
+        // This call returns a storage mapping with a unique non overwrite-able storage location
+        // which can be persisted through upgrades, even if they change storage layout
+        return Storage.uint256Ptr("bound");
     }
 
     /// @notice A function to access the storage of the unassigned token value
@@ -119,6 +129,27 @@ contract VestingVault is IVotingVault {
         return _grants()[_who];
     }
 
+    /// @notice Accepts a grant
+    /// @dev Sends token from the contract to the sender and back to the contract
+    /// while assigning a numerical range to the unwithdrawn granted tokens.
+    function acceptGrant() public {
+        // load the grant
+        VestingVaultStorage.Grant storage grant = _grants()[msg.sender];
+        uint256 availableTokens = grant.allocation - grant.withdrawn;
+
+        // check that grant has unwithdrawn tokens
+        require(availableTokens > 0, "no grant available");
+
+        // transfer the token to the user
+        token.transfer(msg.sender, availableTokens);
+        // transfer from the user back to the contract
+        token.transferFrom(msg.sender, address(this), availableTokens);
+
+        uint256 bound = _loadBound().data;
+        grant.range = [bound, bound + availableTokens];
+        Storage.set(Storage.uint256Ptr("bound"), bound + availableTokens);
+    }
+
     /// @notice Adds a new grant.
     /// @dev Manager can set who the voting power will be delegated to initially.
     /// This potentially avoids the need for a delegation transaction by the grant recipient.
@@ -176,7 +207,8 @@ contract VestingVault is IVotingVault {
             _expiration,
             _cliff,
             newVotingPower,
-            _delegatee
+            _delegatee,
+            [uint256(0), uint256(0)]
         );
 
         // update the amount of unassigned tokens
@@ -194,7 +226,7 @@ contract VestingVault is IVotingVault {
     /// @dev The manager has the power to remove a grant at any time. Any withdrawable tokens will be
     /// sent to the grant owner.
     /// @param _who The Grant owner.
-    function removeGrant(address _who) public onlyManager {
+    function removeGrant(address _who) public virtual onlyManager {
         // load the grant
         VestingVaultStorage.Grant storage grant = _grants()[_who];
         // get the amount of withdrawable tokens
@@ -229,9 +261,9 @@ contract VestingVault is IVotingVault {
     }
 
     /// @notice Claim all withdrawable value from a grant.
-    /// @dev claiming value resets the voting power, THis could either increase or reduce the
+    /// @dev claiming value resets the voting power, This could either increase or reduce the
     /// total voting power associated with the caller's grant.
-    function claim() public {
+    function claim() public virtual {
         // load the grant
         VestingVaultStorage.Grant storage grant = _grants()[msg.sender];
         // get the withdrawable amount
@@ -240,6 +272,11 @@ contract VestingVault is IVotingVault {
         // transfer the available amount
         token.transfer(msg.sender, withdrawable);
         grant.withdrawn += uint128(withdrawable);
+
+        // only move range bound if grant was accepted
+        if (grant.range[1] > 0) {
+            grant.range[1] -= withdrawable;
+        }
 
         // update the user's voting power
         _syncVotingPower(msg.sender, grant);
@@ -300,7 +337,11 @@ contract VestingVault is IVotingVault {
     /// by any means other than `deposit()`
     /// @param _amount the amount to withdraw
     /// @param _recipient the address to withdraw to
-    function withdraw(uint256 _amount, address _recipient) public onlyManager {
+    function withdraw(uint256 _amount, address _recipient)
+        public
+        virtual
+        onlyManager
+    {
         Storage.Uint256 storage unassigned = _unassigned();
         require(unassigned.data >= _amount, "Insufficient balance");
         // update unassigned value
@@ -463,10 +504,26 @@ contract VestingVault is IVotingVault {
         return _timelock().data;
     }
 
+    /// @notice A function to access the storage of the unvested token vote power multiplier.
+    /// @return The unvested token multiplier
+    function unvestedMultiplier() external pure returns (uint256) {
+        return _unvestedMultiplier().data;
+    }
+
     /// @notice A function to access the storage of the manager address.
     /// @dev The manager can access all functions with the olyManager modifier.
     /// @return The manager address.
     function manager() public pure returns (address) {
         return _manager().data;
     }
+}
+
+// Deployable version of the abstract contract
+contract VestingVault is AbstractVestingVault {
+    /// @notice Constructs the contract.
+    /// @param _token The erc20 token to grant.
+    /// @param _stale Stale block used for voting power calculations.
+    constructor(IERC20 _token, uint256 _stale)
+        AbstractVestingVault(_token, _stale)
+    {}
 }

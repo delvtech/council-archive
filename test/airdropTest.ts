@@ -36,7 +36,7 @@ describe("Airdrop + Merkle Rewards Feature", function () {
       "MockERC20",
       signers[0]
     );
-    token = await erc20Deployer.deploy("Ele", "test ele");
+    token = await erc20Deployer.deploy("Ele", "test ele", signers[0].address);
 
     const mockLockDeployer = await ethers.getContractFactory(
       "MockLockingVault",
@@ -91,7 +91,7 @@ describe("Airdrop + Merkle Rewards Feature", function () {
     await restoreSnapshot(provider);
   });
 
-  it("Allows claiming the airdrop", async () => {
+  it.skip("Allows claiming the airdrop", async () => {
     for (let i = 0; i < 3; i++) {
       const proof = merkle.getHexProof(await hashAccount(accounts[i]));
       await drop.connect(signers[i]).claim(one, one, proof, signers[i].address);
@@ -121,7 +121,7 @@ describe("Airdrop + Merkle Rewards Feature", function () {
     }
   });
 
-  it("Blocks claiming over the airdrop", async () => {
+  it.skip("Blocks claiming over the airdrop", async () => {
     const proof = merkle.getHexProof(await hashAccount(accounts[0]));
     await drop.claim(one, one, proof, signers[0].address);
     let tx = drop.claim(1, one, proof, signers[0].address);
@@ -136,10 +136,16 @@ describe("Airdrop + Merkle Rewards Feature", function () {
     await expect(tx).to.be.revertedWith("Claimed too much");
   });
 
-  it("Blocks an invalid proof", async () => {
+  it.skip("Blocks an invalid proof", async () => {
     const proof = merkle.getHexProof(await hashAccount(accounts[0]));
     const tx = drop.claim(one, one.mul(2), proof, signers[0].address);
     await expect(tx).to.be.revertedWith("Invalid Proof");
+  });
+
+  it("Revert when it claim", async () => {
+    const proof = merkle.getHexProof(await hashAccount(accounts[0]));
+    const tx = drop.claim(one, one.mul(2), proof, signers[0].address);
+    await expect(tx).to.be.revertedWith("Not Allowed to claim");
   });
 
   it("Blocks gov withdraw before expiration", async () => {
